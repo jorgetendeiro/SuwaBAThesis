@@ -7,7 +7,7 @@ library(posterior)
 library(bayesplot)
 
 # ===== 1. Load data =====
-data <- read_csv("Naoto_Suwa_data_v8_age_style_fixed.csv")
+data <- read_csv("Suwa_CSWS.csv")
 
 
 data <- na.omit(data)
@@ -22,31 +22,31 @@ data <- data %>%
 # ===== 2. Encoding =====
 data <- data %>%
   mutate(
-    Gender_num = ifelse(Gender == "Male", 0, 1),
-    Edu_num = as.numeric(factor(
+    Gender = ifelse(Gender == "Male", 0, 1),
+    Edu = as.numeric(factor(
       Education,
       levels = c("JuniorHigh","HighSchool","VocationalSchool",
                  "TechnicalSchoolJuniorCollege","University")
     )),
-    Age_num = as.numeric(factor(
+    Age = as.numeric(factor(
       AgeGroup,
       levels = c("0-19","20-24","25-29","30-34","35-39","40-44",
                  "45-49","50-54","55-59","60-64","65-69","70+")
     )),
-    Industry_num = as.numeric(factor(Industry))
+    Industry = as.numeric(factor(Industry))
   )
 
 # ===== 3. Design matrix =====
-X <- model.matrix(~ 0 + Gender_num + Edu_num + Age_num, data = data)
+X <- model.matrix(~ 0 + Gender + Edu + Age, data = data)
 
 # ===== 4. Stan data =====
 stan_data <- list(
   N = nrow(data),
   K = ncol(X),
-  J = length(unique(data$Industry_num)),
+  J = length(unique(data$Industry)),
   X = X,
   y = data$Wage_man,
-  industry = data$Industry_num,
+  industry = data$Industry,
   w_raw = as.vector(data$Employees)   
 )
 
