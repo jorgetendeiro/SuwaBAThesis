@@ -7,7 +7,7 @@ library(posterior)
 library(bayesplot)
 
 # ===== 1. Load data =====
-data <- read_csv("Suwa_CSWS.csv")
+data <- read_csv("Suwa_BSWS.csv")
 
 
 data <- na.omit(data)
