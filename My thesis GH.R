@@ -5,6 +5,8 @@ library(readr)
 library(cmdstanr)
 library(posterior)
 library(bayesplot)
+library(ggplot2)
+
 
 # ===== 1. Load data =====
 data <- read_csv("Suwa_BSWS.csv")
@@ -146,3 +148,25 @@ fit$cmdstan_diagnose()
 
 posterior <- as_draws_df(fit)
 mcmc_hist(posterior, pars = c("beta[1]", "beta[2]", "beta[3]"))
+
+# ===== 8. Posterior Predictive Check =====
+yrep_cols <- grep("^y_rep\\[", names(posterior), value = TRUE)
+y_rep <- as.matrix(posterior[, yrep_cols])
+
+# Observed data
+y_obs <- stan_data$y
+
+ppc_hist(y_obs, y_rep[1:200, ]) +
+  ggtitle("Posterior Predictive Check: Histogram")
+
+ppc_dens_overlay(y_obs, y_rep[1:200, ]) +
+  ggtitle("Posterior Predictive Check: Density Overlay")
+
+ppc_stat(y_obs, y_rep, stat = "mean")
+ppc_stat(y_obs, y_rep, stat = "sd")
+
+ppc_boxplot(y_obs, y_rep[1:200, ]) +
+  ggtitle("Posterior Predictive Check: Boxplot")
+
+ppc_intervals_grouped(y_obs, y_rep, group = data$Industry)
+ppc_ecdf_overlay(y_obs, y_rep)
