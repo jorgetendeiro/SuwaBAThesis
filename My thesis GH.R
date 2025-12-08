@@ -223,4 +223,3 @@ curve(dnorm(x), add=TRUE)
 plot(stan_data$X[, 1], resid_std) # vs Gender
 plot(stan_data$X[, 2], resid_std) # vs Edu
 plot(stan_data$X[, 3], resid_std) # vs Age (a bit or a curvilinear relation here, not so great)
-
