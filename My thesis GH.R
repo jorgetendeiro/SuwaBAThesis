@@ -188,7 +188,7 @@ y_rep <- as.matrix(posterior[, yrep_cols])
 y_obs <- stan_data$y
 
 ppc_hist(y_obs, y_rep[1:50, ]) +
-  ggtitle("Posterior Predictive Check: Histogram")
+  labs(x = "Wage (man-yen)", y = "Frequency")
 
 ppc_dens_overlay(y_obs, y_rep[1:50, ]) +
   ggtitle("Posterior Predictive Check: Density Overlay")
