@@ -145,11 +145,22 @@ generated quantities {
   vector[K] beta;
   vector[N] y_rep;
 
+  // === posterior R^2 用 ===
+  real RSS = 0;
+  real TSS = 0;
+  real y_mean = mean(y);
+  real R2;
+
   beta = R_ast_inverse * theta;
 
+  // y_rep の生成 + RSS の累積
   for (n in 1:N) {
     y_rep[n] = normal_rng(mu[n], sigma[n]);
+    RSS += square(y[n] - mu[n]);
+    TSS += square(y[n] - y_mean);
   }
+
+  R2 = 1 - RSS / TSS;
 }
 "
 
@@ -178,7 +189,26 @@ fit$cmdstan_diagnose()
 posterior <- as_draws_df(fit)
 mcmc_hist(posterior, pars = c("beta[1]", "beta[2]", "beta[3]"))
 
+# ===== 8.1 Posterior R^2 =====
 
+R2_draws <- fit$draws("R2")
+R2_df <- posterior::as_draws_df(R2_draws)
+R2_mean <- mean(R2_df$R2)
+R2_median <- median(R2_df$R2)
+R2_CI <- quantile(R2_df$R2, c(0.025, 0.975))
+
+cat("Posterior R^2 (mean)   :", R2_mean, "\n")
+cat("Posterior R^2 (median) :", R2_median, "\n")
+cat("95% credible interval   :", R2_CI, "\n")
+
+ggplot(R2_df, aes(x = R2)) +
+  geom_density(fill = "skyblue", alpha = 0.6) +
+  labs(
+    title = "Posterior Distribution of R-squared",
+    x = "R-squared",
+    y = "Density"
+  ) +
+  theme_minimal()
 
 # ===== 9. Posterior Predictive Check =====
 yrep_cols <- grep("^y_rep\\[", names(posterior), value = TRUE)
@@ -191,16 +221,19 @@ ppc_hist(y_obs, y_rep[1:50, ]) +
   labs(x = "Wage (man-yen)", y = "Frequency")
 
 ppc_dens_overlay(y_obs, y_rep[1:50, ]) +
-  ggtitle("Posterior Predictive Check: Density Overlay")
+  labs(x = "Wage (man-yen)", y = "Density")
 
-ppc_stat(y_obs, y_rep, stat = "mean")
-ppc_stat(y_obs, y_rep, stat = "sd")
+ppc_stat(y_obs, y_rep, stat = "mean") +
+  labs(x = "Predicted Mean", y = "Density")
+ppc_stat(y_obs, y_rep, stat = "sd") +
+  labs(x = "Predicted SD", y = "Density")
 
 ppc_boxplot(y_obs, y_rep[1:50, ]) +
-  ggtitle("Posterior Predictive Check: Boxplot")
+  labs(x = "Observation Index", y = "Wage (man-yen)")
 
 ppc_intervals_grouped(y_obs, y_rep, group = data$Industry)
-ppc_ecdf_overlay(y_obs, y_rep)
+ppc_ecdf_overlay(y_obs, y_rep) +
+  labs(x = "Wage (man-yen)", y = "ECDF")
 
 
 
@@ -223,3 +256,39 @@ curve(dnorm(x), add=TRUE)
 plot(stan_data$X[, 1], resid_std) # vs Gender
 plot(stan_data$X[, 2], resid_std) # vs Edu
 plot(stan_data$X[, 3], resid_std) # vs Age (a bit or a curvilinear relation here, not so great)
+
+
+
+library(gridExtra)
+library(grid)
+
+theme_nolabels <- theme_minimal() +
+  theme(
+    axis.title = element_blank(),
+    axis.text  = element_blank(),
+    axis.ticks = element_blank(),
+    plot.title = element_blank()     
+  )
+
+# 9個ぶんのプロットを入れるリスト
+plots <- list()
+
+# 1つ目：Observed
+plots[[1]] <- ggplot(data.frame(y = y_obs), aes(x = y)) +
+  geom_histogram(binwidth = 2, fill = "darkblue", alpha = 0.8) +
+  theme_nolabels
+
+# Replicates（8つ）
+for (i in 1:8) {
+  plots[[i+1]] <- ggplot(data.frame(y = y_rep[i, ]), aes(x = y)) +
+    geom_histogram(binwidth = 2, fill = "skyblue", alpha = 0.8) +
+    theme_nolabels
+}
+
+# 3×3パネル ＋ 全体の x・y ラベル
+grid.arrange(
+  grobs = plots,
+  ncol = 3,
+  bottom = textGrob("Wage (man-yen)", gp = gpar(fontsize = 14)),
+  left   = textGrob("Frequency",      rot = 90, gp = gpar(fontsize = 14))
+)
