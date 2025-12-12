@@ -5,7 +5,10 @@ library(readr)
 library(cmdstanr)
 library(posterior)
 library(bayesplot)
+#JT# Always load new libraries here, not down in the script.
 library(ggplot2)
+library(gridExtra)
+library(grid)
 
 
 
@@ -42,8 +45,8 @@ data <- data %>%
 
 
 # ===== 3. Drop rows with weights zero =====
-#JT# I dropped rows with 0 employees, as these do not contribute to the likelihood.
-#JT# This simplifies the Stan model below.
+# Dropping rows with 0 employees, as these do not contribute to the likelihood.
+# This simplifies the Stan model below.
 data <- data[data$Employees > 0, ]
 
 
@@ -53,36 +56,17 @@ X <- model.matrix(~ 0 + Gender + Edu + Age, data = data)
 
 
 
-# ===== 5. Stan data =====
-#JT# About the weights. Some weights are huge in magnitude:
-#JT# range(data$Employees) # up to 355710
-#JT# That creates problems for Stan to fit the model.
-#JT# Also, I realized that modeling the y means as y~N(mu, sigma/sqrt(n)) is a bad idea, 
-#JT# because we do not realistically expect that the mean wages shrink with n (in any 
-#JT# company, there will always be lower and higher wages regardless of the number of workers).
-#JT# I changed the model in three ways:
-#JT# - Now, we model the y means directly, so y ~ N(mu, sigma). Observations are mean wages.
-#JT# - I model heteroscedasticity. That is, sigma changes with X. I do so because, after fitting
-#JT#   the model using a constant sigma, the residuals plot showed a funnel effect. To account 
-#JT#   for this, I model sigma as a linear function of the linear predictor mu.
-#JT# - First, I included the weights in the model as frequency weights, rescaled to reduce their size.
-#JT#   It works, but fit was not great. I then tried to remove the weights (so, all weights = to 1). And 
-#JT#   this fit the data much better. So, in the Stan data below, I make all weights equal to 1 (no 
-#JT#   weighing).
-#JT# The above three changes improved model fit tremendously.
-stan_data <- list(
-  N        = nrow(data),
-  K        = ncol(X),
-  J        = length(unique(data$Industry)),
-  X        = X,
-  y        = data$Wage_man,
-  industry = data$Industry,
-  w_raw    = rep(1, nrow(data)) # as.vector(data$Employees / mean(data$Employees)) 
-)
+# ===== 5. Write Stan model =====
+# Notes:
+# - I model the y means directly, so y ~ N(mu, sigma). Observations are mean wages.
+# - I model heteroscedasticity. That is, sigma changes with X. I do so because, after fitting
+#   the model using a constant sigma, the residuals plot showed a funnel effect. To account 
+#   for this, I model sigma as a linear function of the linear predictor mu.
+# - First, I included the weights in the model as frequency weights, rescaled to reduce their size.
+#   It works, but fit was not great. I then tried to remove the weights (so, all weights = to 1). And 
+#   this fit the data much better. So, in the Stan data below, I make all weights equal to 1 (no 
+#   weighing).
 
-
-
-# ===== 6. Write Stan model =====
 stan_code <- "
 data {
   int<lower=1> N;
@@ -164,12 +148,30 @@ generated quantities {
 }
 "
 
-writeLines(stan_code, "wage_model_multilevel_QR_weighted.stan")
+#JT# Below, I suggest using write_stan_file(). It saves the Stan file to a temporary
+#JT# directory, so we don't need to worry about GitHub tracking it (no need for .gitignore too).
+# writeLines(stan_code, "wage_model_multilevel_QR_weighted.stan")
+stan_file <- write_stan_file(stan_code)
+
+
+
+# ===== 6. Stan data =====
+stan_data <- list(
+  N        = nrow(data),
+  K        = ncol(X),
+  J        = length(unique(data$Industry)),
+  X        = X,
+  y        = data$Wage_man,
+  industry = data$Industry,
+  w_raw    = rep(1, nrow(data)) # as.vector(data$Employees / mean(data$Employees)) 
+)
 
 
 
 # ===== 7. Sampling =====
-mod <- cmdstan_model("wage_model_multilevel_QR_weighted.stan")
+#JT# cmdstan_model() will now save the compiled model in the same temp directory, nice.
+# mod <- cmdstan_model("wage_model_multilevel_QR_weighted.stan")
+mod       <- cmdstan_model(stan_file)
 
 fit <- mod$sample(
   data            = stan_data,
@@ -190,12 +192,12 @@ posterior <- as_draws_df(fit)
 mcmc_hist(posterior, pars = c("beta[1]", "beta[2]", "beta[3]"))
 
 # ===== 8.1 Posterior R^2 =====
-
-R2_draws <- fit$draws("R2")
-R2_df <- posterior::as_draws_df(R2_draws)
-R2_mean <- mean(R2_df$R2)
+#JT# R2_draws <- fit$draws("R2")
+#JT# R2_df <- posterior::as_draws_df(R2_draws)
+R2_df     <- data.frame(R2 = posterior$R2)
+R2_mean   <- mean(R2_df$R2)
 R2_median <- median(R2_df$R2)
-R2_CI <- quantile(R2_df$R2, c(0.025, 0.975))
+R2_CI     <- quantile(R2_df$R2, c(0.025, 0.975))
 
 cat("Posterior R^2 (mean)   :", R2_mean, "\n")
 cat("Posterior R^2 (median) :", R2_median, "\n")
@@ -210,30 +212,45 @@ ggplot(R2_df, aes(x = R2)) +
   ) +
   theme_minimal()
 
-# ===== 9. Posterior Predictive Check =====
+
+
+# ===== 9. Posterior predictive checks =====
 yrep_cols <- grep("^y_rep\\[", names(posterior), value = TRUE)
 y_rep <- as.matrix(posterior[, yrep_cols])
 
 # Observed data
 y_obs <- stan_data$y
 
-ppc_hist(y_obs, y_rep[1:50, ]) +
+#JT# Save plots as objects, to combine later:
+p1 <- ppc_hist(y_obs, y_rep[1:8, ]) +
   labs(x = "Wage (man-yen)", y = "Frequency")
 
-ppc_dens_overlay(y_obs, y_rep[1:50, ]) +
+p2 <- ppc_dens_overlay(y_obs, y_rep[1:50, ]) +
   labs(x = "Wage (man-yen)", y = "Density")
 
-ppc_stat(y_obs, y_rep, stat = "mean") +
+p4 <- ppc_stat(y_obs, y_rep, stat = "mean") +
   labs(x = "Predicted Mean", y = "Density")
-ppc_stat(y_obs, y_rep, stat = "sd") +
+
+p5 <- ppc_stat(y_obs, y_rep, stat = "sd") +
   labs(x = "Predicted SD", y = "Density")
 
-ppc_boxplot(y_obs, y_rep[1:50, ]) +
+p6 <- ppc_boxplot(y_obs, y_rep[1:50, ]) +
   labs(x = "Observation Index", y = "Wage (man-yen)")
 
+#JT# This plot won't make it to the thesis:
 ppc_intervals_grouped(y_obs, y_rep, group = data$Industry)
-ppc_ecdf_overlay(y_obs, y_rep) +
+
+p3 <- ppc_ecdf_overlay(y_obs, y_rep) +
   labs(x = "Wage (man-yen)", y = "ECDF")
+
+#JT# Combine plots p1 through p6:
+#JT# After looking at the result, I further tweaked with the row heights.
+layout <- matrix(c(1, 1, 2, 3, 4, 5, 6, 6), ncol = 2, byrow = TRUE)
+g      <- arrangeGrob(
+  p1, p2, p3, p4, p5, p6,
+  layout_matrix = layout, heights = c(1, .8, .8, 1.5))
+# Save to a file:
+ggsave(filename = "plot_PPCs.png", plot = g, width = 6.5, height = 9.35, units = "in", dpi = 300)
 
 
 
@@ -257,38 +274,7 @@ plot(stan_data$X[, 1], resid_std) # vs Gender
 plot(stan_data$X[, 2], resid_std) # vs Edu
 plot(stan_data$X[, 3], resid_std) # vs Age (a bit or a curvilinear relation here, not so great)
 
+#JT# Please combine these plots as well.
+#JT# You cannot use the same commands as before, as these as not ggplots.
 
 
-library(gridExtra)
-library(grid)
-
-theme_nolabels <- theme_minimal() +
-  theme(
-    axis.title = element_blank(),
-    axis.text  = element_blank(),
-    axis.ticks = element_blank(),
-    plot.title = element_blank()     
-  )
-
-# 9個ぶんのプロットを入れるリスト
-plots <- list()
-
-# 1つ目：Observed
-plots[[1]] <- ggplot(data.frame(y = y_obs), aes(x = y)) +
-  geom_histogram(binwidth = 2, fill = "darkblue", alpha = 0.8) +
-  theme_nolabels
-
-# Replicates（8つ）
-for (i in 1:8) {
-  plots[[i+1]] <- ggplot(data.frame(y = y_rep[i, ]), aes(x = y)) +
-    geom_histogram(binwidth = 2, fill = "skyblue", alpha = 0.8) +
-    theme_nolabels
-}
-
-# 3×3パネル ＋ 全体の x・y ラベル
-grid.arrange(
-  grobs = plots,
-  ncol = 3,
-  bottom = textGrob("Wage (man-yen)", gp = gpar(fontsize = 14)),
-  left   = textGrob("Frequency",      rot = 90, gp = gpar(fontsize = 14))
-)
