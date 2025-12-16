@@ -199,7 +199,6 @@ print(alpha_means)
 industry_levels <- levels(factor(read_csv("Suwa_BSWS.csv")$Industry))
 industry_levels
 
-
 # ===== 8.1 Posterior R^2 =====
 #JT# R2_draws <- fit$draws("R2")
 #JT# R2_df <- posterior::as_draws_df(R2_draws)
