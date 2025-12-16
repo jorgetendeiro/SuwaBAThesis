@@ -12,6 +12,7 @@ library(grid)
 
 
 
+
 # ===== 1. Load data =====
 data <- read_csv("Suwa_BSWS.csv")
 
@@ -199,7 +200,6 @@ print(alpha_means)
 industry_levels <- levels(factor(read_csv("Suwa_BSWS.csv")$Industry))
 industry_levels
 
-
 # ===== 8.1 Posterior R^2 =====
 #JT# R2_draws <- fit$draws("R2")
 #JT# R2_df <- posterior::as_draws_df(R2_draws)
@@ -215,7 +215,6 @@ cat("95% credible interval   :", R2_CI, "\n")
 ggplot(R2_df, aes(x = R2)) +
   geom_density(fill = "skyblue", alpha = 0.6) +
   labs(
-    title = "Posterior Distribution of R-squared",
     x = "R-squared",
     y = "Density"
   ) +
@@ -229,6 +228,8 @@ y_rep <- as.matrix(posterior[, yrep_cols])
 
 # Observed data
 y_obs <- stan_data$y
+
+
 
 #JT# Save plots as objects, to combine later:
 p1 <- ppc_hist(y_obs, y_rep[1:8, ]) +
@@ -252,14 +253,68 @@ ppc_intervals_grouped(y_obs, y_rep, group = data$Industry)
 p3 <- ppc_ecdf_overlay(y_obs, y_rep) +
   labs(x = "Wage (man-yen)", y = "ECDF")
 
+
 #JT# Combine plots p1 through p6:
 #JT# After looking at the result, I further tweaked with the row heights.
-layout <- matrix(c(1, 1, 2, 3, 4, 5, 6, 6), ncol = 2, byrow = TRUE)
-g      <- arrangeGrob(
+layout <- matrix(
+  c(1, 1,
+    2, 3,
+    4, 5,
+    6, 6),
+  ncol = 2,
+  byrow = TRUE
+)
+
+g <- arrangeGrob(
   p1, p2, p3, p4, p5, p6,
-  layout_matrix = layout, heights = c(1, .8, .8, 1.5))
-# Save to a file:
-ggsave(filename = "plot_PPCs.png", plot = g, width = 6.5, height = 9.35, units = "in", dpi = 300)
+  layout_matrix = layout,
+  heights = c(1, 0.8, 0.8, 1.5)
+)
+
+g_final <- grobTree(
+  g,
+  
+  # (a) top panel
+  textGrob("(a)", x = unit(0.98, "npc"), y = unit(0.98, "npc"),
+           just = c("right", "top"),
+           gp = gpar(fontsize = 14, fontface = "bold")),
+  
+  # (b)
+  textGrob("(b)", x = unit(0.48, "npc"), y = unit(0.73, "npc"),
+           just = c("right", "top"),
+           gp = gpar(fontsize = 14, fontface = "bold")),
+  
+  # (c)
+  textGrob("(c)", x = unit(0.98, "npc"), y = unit(0.73, "npc"),
+           just = c("right", "top"),
+           gp = gpar(fontsize = 14, fontface = "bold")),
+  
+  # (d)
+  textGrob("(d)", x = unit(0.48, "npc"), y = unit(0.56, "npc"),
+           just = c("right", "top"),
+           gp = gpar(fontsize = 14, fontface = "bold")),
+  
+  # (e)
+  textGrob("(e)", x = unit(0.98, "npc"), y = unit(0.56, "npc"),
+           just = c("right", "top"),
+           gp = gpar(fontsize = 14, fontface = "bold")),
+  
+  # (f) bottom panel
+  textGrob("(f)", x = unit(0.98, "npc"), y = unit(0.28, "npc"),
+           just = c("right", "top"),
+           gp = gpar(fontsize = 14, fontface = "bold"))
+)
+
+ggsave(
+  filename = "plot_PPCs.png",
+  plot = g_final,
+  width = 6.5,
+  height = 9.35,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
 
 
 
@@ -276,14 +331,51 @@ resid_std     <- resid / sigma_n_hat
 plot(mu_hat, resid)           # residual vs fitted
 # But the standardized residuals are fine:
 plot(mu_hat, resid_std)       # residual vs fitted
-hist(resid_std, breaks = 20, freq = FALSE)  # ~ N(0,1)
+hist(resid_std, breaks = 20, freq = FALSE, main = "")  # ~ N(0,1)
 curve(dnorm(x), add=TRUE)
 # See standardized residuals per predictor:
 plot(stan_data$X[, 1], resid_std) # vs Gender
 plot(stan_data$X[, 2], resid_std) # vs Edu
 plot(stan_data$X[, 3], resid_std) # vs Age (a bit or a curvilinear relation here, not so great)
 
+layout(
+  matrix(c(1, 3,
+           2, 3),
+         nrow = 2,
+         byrow = TRUE),
+  heights = c(1, 1)   # a と b を同じ高さ → 合計が c
+)
+
+# ---- (a) Residuals vs fitted ----
+plot(
+  mu_hat, resid,
+  xlab = "mu_hat",
+  ylab = "resid",
+  main = ""
+)
+mtext("(a)", side = 3, line = 0.5, adj = 0.95, font = 2)
+
+# ---- (b) Standardized residuals vs fitted ----
+plot(
+  mu_hat, resid_std,
+  xlab = "mu_hat",
+  ylab = "resid_std",
+  main = ""
+)
+mtext("(b)", side = 3, line = 0.5, adj = 0.95, font = 2)
+
+# ---- (c) Histogram of standardized residuals ----
+hist(
+  resid_std,
+  breaks = 20,
+  freq = FALSE,
+  main = "",
+  xlab = "resid_std",
+  ylab = "Density",
+  col = "gray90",
+  border = "gray40"
+)
+curve(dnorm(x), add = TRUE, lwd = 2)
+mtext("(c)", side = 3, line = 0.5, adj = 0.95, font = 2)
 #JT# Please combine these plots as well.
 #JT# You cannot use the same commands as before, as these as not ggplots.
-
-
