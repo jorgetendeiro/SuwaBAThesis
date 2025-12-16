@@ -191,12 +191,14 @@ fit$cmdstan_diagnose()
 posterior <- as_draws_df(fit)
 mcmc_hist(posterior, pars = c("beta[1]", "beta[2]", "beta[3]"))
 
+
 alpha_draws <- posterior::as_draws_matrix(fit$draws("alpha_industry"))
 alpha_means <- colMeans(alpha_draws)
 print(alpha_means)
 
 industry_levels <- levels(factor(read_csv("Suwa_BSWS.csv")$Industry))
 industry_levels
+
 
 # ===== 8.1 Posterior R^2 =====
 #JT# R2_draws <- fit$draws("R2")
