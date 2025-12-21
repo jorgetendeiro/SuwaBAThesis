@@ -343,7 +343,7 @@ layout(
            2, 3),
          nrow = 2,
          byrow = TRUE),
-  heights = c(1, 1)   # a と b を同じ高さ → 合計が c
+  heights = c(1, 1)
 )
 
 # ---- (a) Residuals vs fitted ----
