@@ -60,7 +60,17 @@ X <- model.matrix(~ 0 + Gender + Edu + Age, data = data)
 # - I model the y means directly, so y ~ N(mu, sigma). Observations are mean wages.
 # - I model heteroscedasticity. That is, sigma changes with X. I do so because, after fitting
 #   the model using a constant sigma, the residuals plot showed a funnel effect. To account 
-#   for this, I model sigma as a linear function of the linear predictor mu.
+#   for this, I modeled sigma as a linear function of the linear predictor mu. After adding
+#   random slopes for gender I had too many divergences. To avoid the problem, I updated 
+#   the model for sigma by using the inverse logistic function:
+#   sigma[n] = sigma0 + gamma * inv_logit((mu[n] - c)/s).
+#   This model provides a softer way of assigning (about) sigma0 to small mu values and (about)
+#   sigma0+gamma to large mu values. We must scale the inverse logistic function to the scale of 
+#   y = wage. We decided to center the inverse logistic function at c=median(y)=27.1.
+#   As for scaling s, we considered the width
+#   w = quantile(y, 0.9) - quantile(y, 0.1) = 19.8.
+#   Since inv_logit(-2.20) = 0.1 and inv_logit(2.20) = 0.9, then
+#   s = w / (2.20 - (-2.20)) = 4.5.
 # - First, I included the weights in the model as frequency weights, rescaled to reduce their size.
 #   It works, but fit was not great. I then tried to remove the weights (so, all weights = to 1). And 
 #   this fit the data much better. So, in the Stan data below, I make all weights equal to 1 (no 
@@ -75,16 +85,19 @@ data {
   vector[N] y;
   array[N] int<lower=1, upper=J> industry;
   vector[N] w_raw;              // frequency weights
+  int<lower=1, upper=K> gender_col; // X column holding gender
 }
 
 transformed data {
   matrix[N, K] Q_ast;
   matrix[K, K] R_ast;
   matrix[K, K] R_ast_inverse;
+  vector[N] gender;
 
   Q_ast = qr_thin_Q(X) * sqrt(N - 1);
   R_ast = qr_thin_R(X) / sqrt(N - 1);
   R_ast_inverse = inverse(R_ast);
+  gender = col(X, gender_col);
 }
 
 parameters {
@@ -94,20 +107,24 @@ parameters {
   real<lower=0> sigma0;         // sigma at min(mu) = sigma0
   real<lower=0> gamma;          // sigma at max(mu) = sigma0 + gamma
   real<lower=0> sigma_industry;
+  vector[J] z_gender; 
+  real<lower=0> sigma_gender; 
 }
 
 transformed parameters {
   vector[J] alpha_industry;
+  vector[J] gender_industry;
   vector[N] mu;
   vector[N] sigma;
 
   alpha_industry = sigma_industry * z_industry;
-  mu = alpha + Q_ast * theta + alpha_industry[industry];
-  
+  gender_industry = sigma_gender   * z_gender;
+  mu = alpha + Q_ast * theta + alpha_industry[industry] + gender .* gender_industry[industry];
+
   real mu_min = min(mu);
   real mu_max = max(mu);
   for (n in 1:N) {
-    sigma[n] = sigma0 + gamma * (mu[n] - mu_min) / (mu_max - mu_min);
+    sigma[n] = sigma0 + gamma * inv_logit((mu[n] - 27.1)/4.5); 
   }
 }
 
@@ -118,6 +135,8 @@ model {
   gamma  ~ normal(0, 20);  
   sigma_industry ~ normal(0, 3);
   z_industry ~ normal(0, 1);
+  sigma_gender ~ normal(0, 3);
+  z_gender ~ normal(0, 1); 
 
   for (n in 1:N) {
     target += w_raw[n] * normal_lpdf(y[n] | mu[n], sigma[n]);
@@ -161,7 +180,8 @@ stan_data <- list(
   X        = X,
   y        = data$Wage_man,
   industry = data$Industry,
-  w_raw    = rep(1, nrow(data)) # as.vector(data$Employees / mean(data$Employees)) 
+  w_raw    = rep(1, nrow(data)), # as.vector(data$Employees / mean(data$Employees)) 
+  gender_col = 1
 )
 
 
@@ -177,12 +197,17 @@ fit <- mod$sample(
   chains          = 4,
   parallel_chains = 4,
   seed            = 123
+  #init = 0#, 
+  # adapt_delta     = 0.995, # added to avoid divergences
+  # max_treedepth   = 15    # added to avoid divergences
 )
+sum_df <- fit$summary()
+sum_df[order(-sum_df$rhat), c("variable", "rhat")][1:20, ]
 
 
 
 # ===== 8. Results =====
-fit$summary(c("alpha", "beta", "sigma0", "gamma", "sigma_industry"))
+fit$summary(c("alpha", "beta", "sigma0", "gamma", "sigma_industry", "sigma_gender"))
 fit$cmdstan_diagnose()
 
 posterior <- as_draws_df(fit)
