@@ -1,20 +1,18 @@
 # ===== 0. Setup =====
-setwd("C:/Users/atomu1107/Downloads/")
+# setwd("C:/Users/atomu1107/Downloads/")
 library(dplyr)
 library(readr)
 library(cmdstanr)
 library(posterior)
 library(bayesplot)
-#JT# Always load new libraries here, not down in the script.
 library(ggplot2)
 library(gridExtra)
 library(grid)
 
 
 
-
 # ===== 1. Load data =====
-data <- read_csv("Suwa_BSWS.csv")
+data <- read_csv("Suwa_BSWS.csv", show_col_types = FALSE)
 
 data <- na.omit(data)
 
@@ -149,9 +147,8 @@ generated quantities {
 }
 "
 
-#JT# Below, I suggest using write_stan_file(). It saves the Stan file to a temporary
-#JT# directory, so we don't need to worry about GitHub tracking it (no need for .gitignore too).
-# writeLines(stan_code, "wage_model_multilevel_QR_weighted.stan")
+# write_stan_file() saves the Stan file to a temporary directory, so we don't 
+# need to worry about GitHub tracking it (no need for .gitignore too).
 stan_file <- write_stan_file(stan_code)
 
 
@@ -170,8 +167,7 @@ stan_data <- list(
 
 
 # ===== 7. Sampling =====
-#JT# cmdstan_model() will now save the compiled model in the same temp directory, nice.
-# mod <- cmdstan_model("wage_model_multilevel_QR_weighted.stan")
+# cmdstan_model() will now save the compiled model in the same temp directory.
 mod       <- cmdstan_model(stan_file)
 
 fit <- mod$sample(
@@ -192,17 +188,17 @@ fit$cmdstan_diagnose()
 posterior <- as_draws_df(fit)
 mcmc_hist(posterior, pars = c("beta[1]", "beta[2]", "beta[3]"))
 
-
+# Industry random effects:
 alpha_draws <- posterior::as_draws_matrix(fit$draws("alpha_industry"))
 alpha_means <- colMeans(alpha_draws)
 print(alpha_means)
 
-industry_levels <- levels(factor(read_csv("Suwa_BSWS.csv")$Industry))
+industry_levels <- levels(factor(data$Industry))
 industry_levels
 
+data.frame(industry = industry_levels, alpha = round(alpha_means, 2))
+
 # ===== 8.1 Posterior R^2 =====
-#JT# R2_draws <- fit$draws("R2")
-#JT# R2_df <- posterior::as_draws_df(R2_draws)
 R2_df     <- data.frame(R2 = posterior$R2)
 R2_mean   <- mean(R2_df$R2)
 R2_median <- median(R2_df$R2)
@@ -212,13 +208,23 @@ cat("Posterior R^2 (mean)   :", R2_mean, "\n")
 cat("Posterior R^2 (median) :", R2_median, "\n")
 cat("95% credible interval   :", R2_CI, "\n")
 
-ggplot(R2_df, aes(x = R2)) +
-  geom_density(fill = "skyblue", alpha = 0.6) +
+g <- ggplot(R2_df, aes(x = R2)) +
+  geom_density(fill = "#d1e1ec", col = "#03396c") +
   labs(
-    x = "R-squared",
+    x = "R squared",
     y = "Density"
   ) +
   theme_minimal()
+
+ggsave(
+  filename = "Figures/Rsquared.png",
+  plot = g,
+  width = 6,
+  height = 4.5,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
 
 
 
@@ -229,9 +235,7 @@ y_rep <- as.matrix(posterior[, yrep_cols])
 # Observed data
 y_obs <- stan_data$y
 
-
-
-#JT# Save plots as objects, to combine later:
+# Save plots as objects, to combine later:
 p1 <- ppc_hist(y_obs, y_rep[1:8, ]) +
   labs(x = "Wage (man-yen)", y = "Frequency")
 
@@ -247,15 +251,14 @@ p5 <- ppc_stat(y_obs, y_rep, stat = "sd") +
 p6 <- ppc_boxplot(y_obs, y_rep[1:50, ]) +
   labs(x = "Observation Index", y = "Wage (man-yen)")
 
-#JT# This plot won't make it to the thesis:
-ppc_intervals_grouped(y_obs, y_rep, group = data$Industry)
+# This plot won't make it to the thesis:
+# ppc_intervals_grouped(y_obs, y_rep, group = data$Industry)
 
 p3 <- ppc_ecdf_overlay(y_obs, y_rep) +
   labs(x = "Wage (man-yen)", y = "ECDF")
 
-
-#JT# Combine plots p1 through p6:
-#JT# After looking at the result, I further tweaked with the row heights.
+# Combine plots p1 through p6:
+# After looking at the result, I further tweaked with the row heights.
 layout <- matrix(
   c(1, 1,
     2, 3,
@@ -306,7 +309,7 @@ g_final <- grobTree(
 )
 
 ggsave(
-  filename = "plot_PPCs.png",
+  filename = "Figures/plot_PPCs.png",
   plot = g_final,
   width = 6.5,
   height = 9.35,
@@ -314,7 +317,6 @@ ggsave(
   dpi = 300,
   bg = "white"
 )
-
 
 
 
@@ -338,6 +340,8 @@ plot(stan_data$X[, 1], resid_std) # vs Gender
 plot(stan_data$X[, 2], resid_std) # vs Edu
 plot(stan_data$X[, 3], resid_std) # vs Age (a bit or a curvilinear relation here, not so great)
 
+# Export combined plot for the thesis:
+png(filename = "Figures/residuals_plot.png", width = 2000, height = 1800, res = 300)
 layout(
   matrix(c(1, 3,
            2, 3),
@@ -347,35 +351,58 @@ layout(
 )
 
 # ---- (a) Residuals vs fitted ----
+par(mar = c(4, 4, 1, .5))
 plot(
   mu_hat, resid,
-  xlab = "mu_hat",
-  ylab = "resid",
-  main = ""
+  xlab = "",
+  ylab = "",
+  main = "", las = 1, pch = 4, lwd = 1, bty = "n", col = "#d1e1ec", 
+  xlim = c(15, 45), xaxt = "n", 
+  ylim = c(-20, 40), yaxt = "n"
 )
-mtext("(a)", side = 3, line = 0.5, adj = 0.95, font = 2)
+axis(1, seq(15, 45, 10), las = 1)
+axis(2, seq(-20, 40, 20), las = 1)
+abline(h = 0, col = "#03396c", lty = 2)
+mtext("Mean predicted values", 1, 2.5)
+mtext("Residuals", 2, 2.5)
+mtext("(a)", side = 3, line = -1, adj = 0.95, font = 2)
 
 # ---- (b) Standardized residuals vs fitted ----
+par(mar = c(4, 4, 1, .5))
 plot(
   mu_hat, resid_std,
-  xlab = "mu_hat",
-  ylab = "resid_std",
-  main = ""
+  xlab = "",
+  ylab = "",
+  main = "", pch = 4, lwd = 1, bty = "n", col = "#d1e1ec", 
+  xlim = c(15, 45), xaxt = "n", 
+  ylim = c(-3, 5), yaxt = "n"
 )
-mtext("(b)", side = 3, line = 0.5, adj = 0.95, font = 2)
+axis(1, seq(15, 45, 10), las = 1)
+axis(2, c(-3, 0, 5), las = 1)
+abline(h = 0, col = "#03396c", lty = 2)
+mtext("Mean predicted values", 1, 2.5)
+mtext("Standardized ", 2, 2.8)
+mtext("residuals", 2, 1.7)
+mtext("(b)", side = 3, line = -1, adj = 0.95, font = 2)
 
 # ---- (c) Histogram of standardized residuals ----
+par(mar = c(4, 4, 1, .5))
 hist(
   resid_std,
   breaks = 20,
   freq = FALSE,
   main = "",
-  xlab = "resid_std",
-  ylab = "Density",
-  col = "gray90",
-  border = "gray40"
+  xlab = "",
+  ylab = "",
+  col = "#c5d9e7",
+  border = "white", 
+  xlim = c(-3, 6), xaxt = "n", ylim = c(0, .5), las = 1
 )
-curve(dnorm(x), add = TRUE, lwd = 2)
-mtext("(c)", side = 3, line = 0.5, adj = 0.95, font = 2)
-#JT# Please combine these plots as well.
-#JT# You cannot use the same commands as before, as these as not ggplots.
+curve(dnorm(x), add = TRUE, lwd = 2, col = "#03396c")
+axis(1, seq(-3, 6, 3))
+mtext("Mean predicted values", 1, 2.5)
+mtext("Residuals", 2, 2.5)
+mtext("(c)", side = 3, line = -1, adj = 0.95, font = 2)
+dev.off()
+
+
