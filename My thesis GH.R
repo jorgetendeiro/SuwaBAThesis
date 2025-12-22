@@ -23,7 +23,6 @@ data <- data %>%
   )
 
 
-
 # ===== 2. Encoding =====
 data <- data %>%
   mutate(
@@ -60,7 +59,17 @@ X <- model.matrix(~ 0 + Gender + Edu + Age, data = data)
 # - I model the y means directly, so y ~ N(mu, sigma). Observations are mean wages.
 # - I model heteroscedasticity. That is, sigma changes with X. I do so because, after fitting
 #   the model using a constant sigma, the residuals plot showed a funnel effect. To account 
-#   for this, I model sigma as a linear function of the linear predictor mu.
+#   for this, I modeled sigma as a linear function of the linear predictor mu. After adding
+#   random slopes for gender I had too many divergences. To avoid the problem, I updated 
+#   the model for sigma by using the inverse logistic function:
+#   sigma[n] = sigma0 + gamma * inv_logit((mu[n] - c)/s).
+#   This model provides a softer way of assigning (about) sigma0 to small mu values and (about)
+#   sigma0+gamma to large mu values. We must scale the inverse logistic function to the scale of 
+#   y = wage. We decided to center the inverse logistic function at c=median(y)=27.1.
+#   As for scaling s, we considered the width
+#   w = quantile(y, 0.9) - quantile(y, 0.1) = 19.8.
+#   Since inv_logit(-2.20) = 0.1 and inv_logit(2.20) = 0.9, then
+#   s = w / (2.20 - (-2.20)) = 4.5.
 # - First, I included the weights in the model as frequency weights, rescaled to reduce their size.
 #   It works, but fit was not great. I then tried to remove the weights (so, all weights = to 1). And 
 #   this fit the data much better. So, in the Stan data below, I make all weights equal to 1 (no 
@@ -75,16 +84,19 @@ data {
   vector[N] y;
   array[N] int<lower=1, upper=J> industry;
   vector[N] w_raw;              // frequency weights
+  int<lower=1, upper=K> gender_col; // X column holding gender
 }
 
 transformed data {
   matrix[N, K] Q_ast;
   matrix[K, K] R_ast;
   matrix[K, K] R_ast_inverse;
+  vector[N] gender;
 
   Q_ast = qr_thin_Q(X) * sqrt(N - 1);
   R_ast = qr_thin_R(X) / sqrt(N - 1);
   R_ast_inverse = inverse(R_ast);
+  gender = col(X, gender_col);
 }
 
 parameters {
@@ -94,20 +106,24 @@ parameters {
   real<lower=0> sigma0;         // sigma at min(mu) = sigma0
   real<lower=0> gamma;          // sigma at max(mu) = sigma0 + gamma
   real<lower=0> sigma_industry;
+  vector[J] z_gender; 
+  real<lower=0> sigma_gender; 
 }
 
 transformed parameters {
   vector[J] alpha_industry;
+  vector[J] gender_industry;
   vector[N] mu;
   vector[N] sigma;
 
   alpha_industry = sigma_industry * z_industry;
-  mu = alpha + Q_ast * theta + alpha_industry[industry];
-  
+  gender_industry = sigma_gender   * z_gender;
+  mu = alpha + Q_ast * theta + alpha_industry[industry] + gender .* gender_industry[industry];
+
   real mu_min = min(mu);
   real mu_max = max(mu);
   for (n in 1:N) {
-    sigma[n] = sigma0 + gamma * (mu[n] - mu_min) / (mu_max - mu_min);
+    sigma[n] = sigma0 + gamma * inv_logit((mu[n] - 27.1)/4.5); 
   }
 }
 
@@ -118,6 +134,8 @@ model {
   gamma  ~ normal(0, 20);  
   sigma_industry ~ normal(0, 3);
   z_industry ~ normal(0, 1);
+  sigma_gender ~ normal(0, 3);
+  z_gender ~ normal(0, 1); 
 
   for (n in 1:N) {
     target += w_raw[n] * normal_lpdf(y[n] | mu[n], sigma[n]);
@@ -161,7 +179,8 @@ stan_data <- list(
   X        = X,
   y        = data$Wage_man,
   industry = data$Industry,
-  w_raw    = rep(1, nrow(data)) # as.vector(data$Employees / mean(data$Employees)) 
+  w_raw    = rep(1, nrow(data)), # as.vector(data$Employees / mean(data$Employees)) 
+  gender_col = 1
 )
 
 
@@ -177,12 +196,17 @@ fit <- mod$sample(
   chains          = 4,
   parallel_chains = 4,
   seed            = 123
+  #init = 0#, 
+  # adapt_delta     = 0.995, # added to avoid divergences
+  # max_treedepth   = 15    # added to avoid divergences
 )
+sum_df <- fit$summary()
+sum_df[order(-sum_df$rhat), c("variable", "rhat")][1:20, ]
 
 
 
 # ===== 8. Results =====
-fit$summary(c("alpha", "beta", "sigma0", "gamma", "sigma_industry"))
+fit$summary(c("alpha", "beta", "sigma0", "gamma", "sigma_industry", "sigma_gender"))
 fit$cmdstan_diagnose()
 
 posterior <- as_draws_df(fit)
@@ -225,6 +249,73 @@ ggsave(
   dpi = 300,
   bg = "white"
 )
+
+# ===== 8.2 Industry-specific gender slopes (RQ3) =====
+# gender slope in industry j: beta[1] + gender_industry[j]
+
+# Draws
+beta1_draws <- as.numeric(posterior[["beta[1]"]])
+
+# gender_industry draws: matrix [iter, J]
+gender_ind_draws <- posterior::as_draws_matrix(fit$draws("gender_industry"))
+
+J <- ncol(gender_ind_draws)
+stopifnot(J == length(industry_levels))
+
+# Compute slopes draws: [iter, J]
+slope_draws <- sweep(gender_ind_draws, 1, beta1_draws, FUN = "+")
+
+# Summaries per industry
+slope_mean <- apply(slope_draws, 2, mean)
+slope_ci   <- apply(slope_draws, 2, quantile, probs = c(0.025, 0.975))
+
+gender_slope_df <- data.frame(
+  industry = industry_levels,
+  slope_mean = slope_mean,
+  slope_low  = slope_ci[1, ],
+  slope_high = slope_ci[2, ]
+)
+
+# Sort industries by mean slope (most negative = larger gap if female coded 1)
+gender_slope_df <- gender_slope_df[order(gender_slope_df$slope_mean), ]
+gender_slope_df$industry <- factor(gender_slope_df$industry, levels = gender_slope_df$industry)
+
+print(gender_slope_df)
+
+# Save table (optional but useful)
+write_csv(gender_slope_df, "Figures/industry_gender_slopes.csv")
+
+# Plot: industry-specific gender slopes with 95% credible intervals
+p_gender_slopes <- ggplot(gender_slope_df, aes(x = slope_mean, y = industry)) +
+  geom_vline(xintercept = 0, linetype = 2) +
+  geom_errorbarh(
+    aes(xmin = slope_low, xmax = slope_high),
+    height = 0.2,
+    color = "#d1e1ec",
+    linewidth = 1
+  ) +
+  geom_point(
+    size = 2.5,
+    color = "#03396c"
+  ) +
+  labs(
+    x = "Industry-specific gender slope: beta_gender + gender_industry[j] (man-yen)",
+    y = "Industry"
+  ) +
+  theme_minimal()
+
+
+ggsave(
+  filename = "Figures/industry_gender_slopes.png",
+  plot = p_gender_slopes,
+  width = 7.5,
+  height = 5.5,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
+
 
 
 
