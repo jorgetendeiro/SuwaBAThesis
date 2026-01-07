@@ -278,6 +278,10 @@ gender_slope_df <- data.frame(
 
 # Sort industries by mean slope (most negative means larger gap since male=0, female=1)
 gender_slope_df <- gender_slope_df[order(gender_slope_df$slope_mean), ]
+gender_slope_df$industry <- factor(
+  gender_slope_df$industry,
+  levels = gender_slope_df$industry
+)
 
 print(gender_slope_df)
 
@@ -305,7 +309,7 @@ p_gender_slopes <- ggplot(gender_slope_df, aes(x = slope_mean, y = industry)) +
 ggsave(
   filename = "Figures/industry_gender_slopes.png",
   plot = p_gender_slopes,
-  width = 7.5,
+  width = 8,
   height = 5.5,
   units = "in",
   dpi = 300,
