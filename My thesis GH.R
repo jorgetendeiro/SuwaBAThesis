@@ -256,16 +256,16 @@ ggsave(
 # Draws
 beta1_draws <- as.numeric(posterior[["beta[1]"]])
 
-# gender_industry draws: matrix [iter, J]
+# gender_industry draws: 
 gender_ind_draws <- posterior::as_draws_matrix(fit$draws("gender_industry"))
 
 J <- ncol(gender_ind_draws)
 stopifnot(J == length(industry_levels))
 
-# Compute slopes draws: [iter, J]
+# Compute slopes draws:
 slope_draws <- sweep(gender_ind_draws, 1, beta1_draws, FUN = "+")
 
-# Summaries per industry
+# Summaries per industry:
 slope_mean <- apply(slope_draws, 2, mean)
 slope_ci   <- apply(slope_draws, 2, quantile, probs = c(0.025, 0.975))
 
@@ -276,14 +276,13 @@ gender_slope_df <- data.frame(
   slope_high = slope_ci[2, ]
 )
 
-# Sort industries by mean slope (most negative = larger gap if female coded 1)
+# Sort industries by mean slope (most negative means larger gap since male=0, female=1)
 gender_slope_df <- gender_slope_df[order(gender_slope_df$slope_mean), ]
 gender_slope_df$industry <- factor(gender_slope_df$industry, levels = gender_slope_df$industry)
 
 print(gender_slope_df)
 
-# Save table (optional but useful)
-write_csv(gender_slope_df, "Figures/industry_gender_slopes.csv")
+# write_csv(gender_slope_df, "Figures/industry_gender_slopes.csv")
 
 # Plot: industry-specific gender slopes with 95% credible intervals
 p_gender_slopes <- ggplot(gender_slope_df, aes(x = slope_mean, y = industry)) +
@@ -299,11 +298,10 @@ p_gender_slopes <- ggplot(gender_slope_df, aes(x = slope_mean, y = industry)) +
     color = "#03396c"
   ) +
   labs(
-    x = "Industry-specific gender slope: beta_gender + gender_industry[j] (man-yen)",
+    x = "Industry-specific gender effect on wage (in 10,000 yen units)",
     y = "Industry"
   ) +
   theme_minimal()
-
 
 ggsave(
   filename = "Figures/industry_gender_slopes.png",
@@ -314,8 +312,6 @@ ggsave(
   dpi = 300,
   bg = "white"
 )
-
-
 
 
 
