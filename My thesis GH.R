@@ -23,7 +23,7 @@ data <- data %>%
   )
 
 
-# ===== 2. Encoding =====
+# ===== 3. Encoding =====
 data <- data %>%
   mutate(
     Gender = ifelse(Gender == "Male", 0, 1),
@@ -43,19 +43,19 @@ data <- data %>%
 
 
 
-# ===== 3. Drop rows with weights zero =====
+# ===== 4. Drop rows with weights zero =====
 # Dropping rows with 0 employees, as these do not contribute to the likelihood.
 # This simplifies the Stan model below.
 data <- data[data$Employees > 0, ]
 
 
 
-# ===== 4. Design matrix =====
+# ===== 5. Design matrix =====
 X <- model.matrix(~ 0 + Gender + Edu + Age, data = data)
 
 
 
-# ===== 5. Write Stan model =====
+# ===== 6. Write Stan model =====
 # Notes:
 # - I model the y means directly, so y ~ N(mu, sigma). Observations are mean wages.
 # - I model heteroscedasticity. That is, sigma changes with X. I do so because, after fitting
@@ -172,7 +172,7 @@ stan_file <- write_stan_file(stan_code)
 
 
 
-# ===== 6. Stan data =====
+# ===== 7. Stan data =====
 stan_data <- list(
   N        = nrow(data),
   K        = ncol(X),
@@ -186,7 +186,7 @@ stan_data <- list(
 
 
 
-# ===== 7. Sampling =====
+# ===== 8. Sampling =====
 # cmdstan_model() will now save the compiled model in the same temp directory.
 mod       <- cmdstan_model(stan_file)
 
@@ -206,7 +206,7 @@ sum_df[order(-sum_df$rhat), c("variable", "rhat")][1:20, ]
 
 
 
-# ===== 8. Results =====
+# ===== 9. Results =====
 fit$summary(c("alpha", "beta", "sigma0", "gamma", "sigma_industry", "sigma_gender"))
 fit$cmdstan_diagnose()
 
@@ -223,7 +223,7 @@ industry_levels
 
 data.frame(industry = industry_levels, alpha = round(alpha_means, 2))
 
-# ===== 8.1 Posterior R^2 =====
+# ===== 9.1 Posterior R^2 =====
 R2_df     <- data.frame(R2 = posterior$R2)
 R2_mean   <- mean(R2_df$R2)
 R2_median <- median(R2_df$R2)
@@ -239,19 +239,22 @@ g <- ggplot(R2_df, aes(x = R2)) +
     x = "R squared",
     y = "Density"
   ) +
-  theme_minimal()
+  theme_minimal(base_size = 25)
+
+g <- g +
+  theme(plot.margin = margin(t = 5.5, r = 20, b = 5.5, l = 5.5))
 
 ggsave(
   filename = "Figures/Rsquared.png",
   plot = g,
-  width = 6,
+  width = 6.5,
   height = 4.5,
   units = "in",
   dpi = 300,
   bg = "white"
 )
 
-# ===== 8.2 Industry-specific gender slopes (RQ3) =====
+# ===== 9.2 Industry-specific gender slopes (RQ3) =====
 # gender slope in industry j: beta[1] + gender_industry[j]
 
 # Draws
@@ -278,6 +281,10 @@ gender_slope_df <- data.frame(
 
 # Sort industries by mean slope (most negative means larger gap since male=0, female=1)
 gender_slope_df <- gender_slope_df[order(gender_slope_df$slope_mean), ]
+gender_slope_df$industry <- factor(
+  gender_slope_df$industry,
+  levels = gender_slope_df$industry
+)
 
 print(gender_slope_df)
 
@@ -288,38 +295,54 @@ p_gender_slopes <- ggplot(gender_slope_df, aes(x = slope_mean, y = industry)) +
   geom_vline(xintercept = 0, linetype = 2) +
   geom_errorbarh(
     aes(xmin = slope_low, xmax = slope_high),
-    height = 0.2,
+    height = 0.22,
     color = "#d1e1ec",
     linewidth = 1
   ) +
-  geom_point(
-    size = 2.5,
-    color = "#03396c"
-  ) +
+  geom_point(size = 2.8, color = "#03396c") +
   labs(
     x = "Gender effect on wage (in 10,000 yen)",
-    y = ""
+    y = NULL
   ) +
-  theme_minimal()
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.title.x = element_text(size = 16),
+    axis.text.x  = element_text(size = 13),
+    
+    # ★ y軸を強化
+    axis.text.y  = element_text(size = 14, face = "bold"),
+    
+    # ★ y軸ラベルが長いので左余白を増やす
+    plot.margin  = margin(t = 5.5, r = 5.5, b = 5.5, l = 28),
+    
+    # 見やすさ
+    panel.grid.major.y = element_blank()
+  )
 
-ggsave(
-  filename = "Figures/industry_gender_slopes.png",
-  plot = p_gender_slopes,
-  width = 7.5,
-  height = 5.5,
-  units = "in",
-  dpi = 300,
-  bg = "white"
-)
+ggsave( filename = "Figures/industry_gender_slopes.png", plot = p_gender_slopes, width = 11, height = 5.5, units = "in", dpi = 300, bg = "white" )
 
 
 
-# ===== 9. Posterior predictive checks =====
+# ===== 10. Posterior predictive checks =====
 yrep_cols <- grep("^y_rep\\[", names(posterior), value = TRUE)
 y_rep <- as.matrix(posterior[, yrep_cols])
 
 # Observed data
 y_obs <- stan_data$y
+
+library(bayesplot)
+
+bayesplot_theme_set(
+  theme_bw(base_size = 16) +
+    theme(
+      axis.title = element_text(size = 20),
+      axis.text  = element_text(size =16),
+      legend.title = element_text(size = 16),
+      legend.text  = element_text(size = 16),
+      plot.title = element_text(size = 24)
+    )
+)
+
 
 # Save plots as objects, to combine later:
 p1 <- ppc_hist(y_obs, y_rep[1:8, ]) +
@@ -366,32 +389,32 @@ g_final <- grobTree(
   # (a) top panel
   textGrob("(a)", x = unit(0.98, "npc"), y = unit(0.98, "npc"),
            just = c("right", "top"),
-           gp = gpar(fontsize = 14, fontface = "bold")),
+           gp = gpar(fontsize = 20, fontface = "bold")),
   
   # (b)
   textGrob("(b)", x = unit(0.48, "npc"), y = unit(0.73, "npc"),
            just = c("right", "top"),
-           gp = gpar(fontsize = 14, fontface = "bold")),
+           gp = gpar(fontsize = 20, fontface = "bold")),
   
   # (c)
   textGrob("(c)", x = unit(0.98, "npc"), y = unit(0.73, "npc"),
            just = c("right", "top"),
-           gp = gpar(fontsize = 14, fontface = "bold")),
+           gp = gpar(fontsize = 20, fontface = "bold")),
   
   # (d)
-  textGrob("(d)", x = unit(0.48, "npc"), y = unit(0.56, "npc"),
+  textGrob("(d)", x = unit(0.48, "npc"), y = unit(0.6, "npc"),
            just = c("right", "top"),
-           gp = gpar(fontsize = 14, fontface = "bold")),
+           gp = gpar(fontsize = 20, fontface = "bold")),
   
   # (e)
-  textGrob("(e)", x = unit(0.98, "npc"), y = unit(0.56, "npc"),
+  textGrob("(e)", x = unit(0.98, "npc"), y = unit(0.6, "npc"),
            just = c("right", "top"),
-           gp = gpar(fontsize = 14, fontface = "bold")),
+           gp = gpar(fontsize = 20, fontface = "bold")),
   
   # (f) bottom panel
   textGrob("(f)", x = unit(0.98, "npc"), y = unit(0.28, "npc"),
            just = c("right", "top"),
-           gp = gpar(fontsize = 14, fontface = "bold"))
+           gp = gpar(fontsize = 20, fontface = "bold"))
 )
 
 ggsave(
@@ -406,7 +429,7 @@ ggsave(
 
 
 
-# ===== 10. Residuals =====
+# ===== 11. Residuals =====
 # Residuals (standardized, to account for the heteroscedasticity):
 mu_draws      <- posterior::as_draws_matrix(fit$draws("mu"))
 mu_hat        <- colMeans(mu_draws)
@@ -427,7 +450,7 @@ plot(stan_data$X[, 2], resid_std) # vs Edu
 plot(stan_data$X[, 3], resid_std) # vs Age (a bit or a curvilinear relation here, not so great)
 
 # Export combined plot for the thesis:
-png(filename = "Figures/residuals_plot.png", width = 2000, height = 1800, res = 300)
+png(filename = "Figures/residuals_plot.png", width = 2050, height = 1800, res = 300)
 layout(
   matrix(c(1, 3,
            2, 3),
@@ -437,42 +460,42 @@ layout(
 )
 
 # ---- (a) Residuals vs fitted ----
-par(mar = c(4, 4, 1, .5))
+par(mar = c(4, 4, 1, .5), cex = 1.25)
 plot(
   mu_hat, resid,
   xlab = "",
   ylab = "",
-  main = "", las = 1, pch = 4, lwd = 1, bty = "n", col = "#d1e1ec", 
+  main = "", las = 1, pch = 4, lwd = 1.2, bty = "n", col = "#d1e1ec", 
   xlim = c(15, 45), xaxt = "n", 
   ylim = c(-20, 40), yaxt = "n"
 )
-axis(1, seq(15, 45, 10), las = 1)
-axis(2, seq(-20, 40, 20), las = 1)
+axis(1, seq(15, 45, 10), las = 1, cex.axis = 1.2)
+axis(2, seq(-20, 40, 20), las = 1, cex.axis = 1.2)
 abline(h = 0, col = "#03396c", lty = 2)
-mtext("Mean predicted values", 1, 2.5)
-mtext("Residuals", 2, 2.5)
-mtext("(a)", side = 3, line = -1, adj = 0.95, font = 2)
+mtext("Mean predicted values", 1, 2.5, cex = 1.5)
+mtext("Residuals", 2, 2.5, cex = 1.5)
+mtext("(a)", side = 3, line = -1, adj = 0.95, font = 2, cex = 1.3)
 
 # ---- (b) Standardized residuals vs fitted ----
-par(mar = c(4, 4, 1, .5))
+par(mar = c(4, 4, 1, .5), cex = 1.25)
 plot(
   mu_hat, resid_std,
   xlab = "",
   ylab = "",
-  main = "", pch = 4, lwd = 1, bty = "n", col = "#d1e1ec", 
+  main = "", pch = 4, lwd = 1.2, bty = "n", col = "#d1e1ec", 
   xlim = c(15, 45), xaxt = "n", 
   ylim = c(-3, 5), yaxt = "n"
 )
-axis(1, seq(15, 45, 10), las = 1)
-axis(2, c(-3, 0, 5), las = 1)
+axis(1, seq(15, 45, 10), las = 1, cex.axis = 1.2)
+axis(2, c(-3, 0, 5), las = 1, cex.axis = 1.2)
 abline(h = 0, col = "#03396c", lty = 2)
-mtext("Mean predicted values", 1, 2.5)
-mtext("Standardized ", 2, 2.8)
-mtext("residuals", 2, 1.7)
-mtext("(b)", side = 3, line = -1, adj = 0.95, font = 2)
+mtext("Mean predicted values", 1, 2.5, cex = 1.5)
+mtext("Standardized ", 2, 2.8, cex = 1.5)
+mtext("residuals", 2, 1.7, cex = 1.5)
+mtext("(b)", side = 3, line = -1, adj = 0.95, font = 2, cex = 1.3)
 
 # ---- (c) Histogram of standardized residuals ----
-par(mar = c(4, 4, 1, .5))
+par(mar = c(4, 4, 1, .5), cex = 1.25)
 hist(
   resid_std,
   breaks = 20,
@@ -485,10 +508,10 @@ hist(
   xlim = c(-3, 6), xaxt = "n", ylim = c(0, .5), las = 1
 )
 curve(dnorm(x), add = TRUE, lwd = 2, col = "#03396c")
-axis(1, seq(-3, 6, 3))
-mtext("Mean predicted values", 1, 2.5)
-mtext("Residuals", 2, 2.5)
-mtext("(c)", side = 3, line = -1, adj = 0.95, font = 2)
+axis(1, seq(-3, 6, 3), cex.axis = 1.2)
+mtext("Mean predicted values", 1, 2.5, cex = 1.5)
+mtext("Residuals", 2, 2.5, cex = 1.5)
+mtext("(c)", side = 3, line = -1, adj = 0.95, font = 2, cex = 1.3)
 dev.off()
 
 
