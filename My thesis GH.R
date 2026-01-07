@@ -37,6 +37,7 @@ data <- data %>%
       levels = c("0-19","20-24","25-29","30-34","35-39","40-44",
                  "45-49","50-54","55-59","60-64","65-69","70+")
     )),
+    Industry.labs = factor(Industry), 
     Industry = as.numeric(factor(Industry))
   )
 
@@ -217,7 +218,7 @@ alpha_draws <- posterior::as_draws_matrix(fit$draws("alpha_industry"))
 alpha_means <- colMeans(alpha_draws)
 print(alpha_means)
 
-industry_levels <- levels(factor(data$Industry))
+industry_levels <- levels(data$Industry.labs)
 industry_levels
 
 data.frame(industry = industry_levels, alpha = round(alpha_means, 2))
@@ -260,7 +261,6 @@ beta1_draws <- as.numeric(posterior[["beta[1]"]])
 gender_ind_draws <- posterior::as_draws_matrix(fit$draws("gender_industry"))
 
 J <- ncol(gender_ind_draws)
-stopifnot(J == length(industry_levels))
 
 # Compute slopes draws:
 slope_draws <- sweep(gender_ind_draws, 1, beta1_draws, FUN = "+")
@@ -278,7 +278,6 @@ gender_slope_df <- data.frame(
 
 # Sort industries by mean slope (most negative means larger gap since male=0, female=1)
 gender_slope_df <- gender_slope_df[order(gender_slope_df$slope_mean), ]
-gender_slope_df$industry <- factor(gender_slope_df$industry, levels = gender_slope_df$industry)
 
 print(gender_slope_df)
 
@@ -298,8 +297,8 @@ p_gender_slopes <- ggplot(gender_slope_df, aes(x = slope_mean, y = industry)) +
     color = "#03396c"
   ) +
   labs(
-    x = "Industry-specific gender effect on wage (in 10,000 yen units)",
-    y = "Industry"
+    x = "Gender effect on wage (in 10,000 yen)",
+    y = ""
   ) +
   theme_minimal()
 
