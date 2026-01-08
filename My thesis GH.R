@@ -1,5 +1,4 @@
 # ===== 0. Setup =====
-# setwd("C:/Users/atomu1107/Downloads/")
 library(dplyr)
 library(readr)
 library(cmdstanr)
@@ -21,6 +20,7 @@ data <- data %>%
   mutate(
     Wage_man = Wage_Yen / 10000
   )
+
 
 
 # ===== 2. Encoding =====
@@ -60,7 +60,7 @@ X <- model.matrix(~ 0 + Gender + Edu + Age, data = data)
 # - I model the y means directly, so y ~ N(mu, sigma). Observations are mean wages.
 # - I model heteroscedasticity. That is, sigma changes with X. I do so because, after fitting
 #   the model using a constant sigma, the residuals plot showed a funnel effect. To account 
-#   for this, I modeled sigma as a linear function of the linear predictor mu. After adding
+#   for this, I modeled sigma as a linear function of the linear predictor mu. However, after adding
 #   random slopes for gender I had too many divergences. To avoid the problem, I updated 
 #   the model for sigma by using the inverse logistic function:
 #   sigma[n] = sigma0 + gamma * inv_logit((mu[n] - c)/s).
@@ -117,7 +117,7 @@ transformed parameters {
   vector[N] mu;
   vector[N] sigma;
 
-  alpha_industry = sigma_industry * z_industry;
+  alpha_industry  = sigma_industry * z_industry;
   gender_industry = sigma_gender   * z_gender;
   mu = alpha + Q_ast * theta + alpha_industry[industry] + gender .* gender_industry[industry];
 
@@ -197,9 +197,6 @@ fit <- mod$sample(
   chains          = 4,
   parallel_chains = 4,
   seed            = 123
-  #init = 0#, 
-  # adapt_delta     = 0.995, # added to avoid divergences
-  # max_treedepth   = 15    # added to avoid divergences
 )
 sum_df <- fit$summary()
 sum_df[order(-sum_df$rhat), c("variable", "rhat")][1:20, ]
@@ -284,8 +281,6 @@ gender_slope_df$industry <- factor(
 )
 
 print(gender_slope_df)
-
-# write_csv(gender_slope_df, "Figures/industry_gender_slopes.csv")
 
 # Plot: industry-specific gender slopes with 95% credible intervals
 p_gender_slopes <- ggplot(gender_slope_df, aes(x = slope_mean, y = industry)) +
