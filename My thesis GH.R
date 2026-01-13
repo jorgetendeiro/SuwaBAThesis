@@ -13,19 +13,12 @@ library(grid)
 # ===== 1. Load data =====
 data <- read_csv("Suwa_BSWS.csv", show_col_types = FALSE)
 
-data <- na.omit(data)
-
-# Wage to man-yen
-data <- data %>%
-  mutate(
-    Wage_man = Wage_Yen / 10000
-  )
-
 
 
 # ===== 2. Encoding =====
 data <- data %>%
   mutate(
+    Wage_man = Wage_Yen / 10000, 
     Gender = ifelse(Gender == "Male", 0, 1),
     Edu = as.numeric(factor(
       Education,
