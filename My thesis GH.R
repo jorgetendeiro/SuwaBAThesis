@@ -14,6 +14,7 @@ library(grid)
 data <- read_csv("Suwa_BSWS.csv", show_col_types = FALSE)
 
 
+
 # ===== 2. Mean wage by gender (bar plot) =====
 
 # Compute employee-weighted average wages by gender
@@ -51,6 +52,7 @@ ggsave(
   dpi = 300,
   bg = "white"
 )
+
 
 
 # ===== 3. Encoding =====
