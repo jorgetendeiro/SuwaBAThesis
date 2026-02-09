@@ -15,6 +15,7 @@ data <- read_csv("Suwa_BSWS.csv", show_col_types = FALSE)
 
 
 # ===== 2. Mean wage by gender (bar plot) =====
+
 # Compute employee-weighted average wages by gender
 mean_wage_gender <- data %>%
   mutate(
