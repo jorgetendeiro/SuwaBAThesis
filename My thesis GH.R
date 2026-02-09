@@ -7,11 +7,13 @@ library(bayesplot)
 library(ggplot2)
 library(gridExtra)
 library(grid)
+library(knitr)
 
 
 
 # ===== 1. Load data =====
 data <- read_csv("Suwa_BSWS.csv", show_col_types = FALSE)
+
 
 
 # ===== 2. Mean wage by gender (bar plot) =====
@@ -50,6 +52,82 @@ ggsave(
   units = "in",
   dpi = 300,
   bg = "white"
+)
+
+# --- 2-1. unadjusted mean wage gap (Male - Female), in man-yen ---
+mean_wage_gender_man <- data %>%
+  mutate(
+    Wage_Yen = as.numeric(Wage_Yen),
+    Employees = as.numeric(Employees),
+    Wage_man = Wage_Yen / 10000
+  ) %>%
+  filter(!is.na(Gender), !is.na(Wage_man), !is.na(Employees), Employees > 0) %>%
+  group_by(Gender) %>%
+  summarise(
+    mean_wage_man = weighted.mean(Wage_man, Employees, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+mean_wage_gender_man
+
+gap_overall_man <- with(mean_wage_gender_man,
+                        mean_wage_man[Gender == "Male"] - mean_wage_man[Gender == "Female"])
+cat("Unadjusted mean wage gap (Male - Female), man-yen:", gap_overall_man, "\n")
+
+
+# --- 2-2. Unadjusted mean wage gap by Education (Male - Female), in man-yen ---
+table_edu <- data %>%
+  mutate(
+    Wage_Yen = as.numeric(Wage_Yen),
+    Employees = as.numeric(Employees)
+  ) %>%
+  filter(!is.na(Gender), !is.na(Education), !is.na(Wage_Yen), !is.na(Employees), Employees > 0) %>%
+  group_by(Education, Gender) %>%
+  summarise(mean_wage = weighted.mean(Wage_Yen, Employees), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = Gender, values_from = mean_wage) %>%
+  mutate(
+    Gap_man_yen = (Male - Female) / 10000
+  )
+
+kable(
+  table_edu,
+  digits = 2,
+  col.names = c("Education", "Male wage (yen)", "Female wage (yen)", "Gap (man-yen)"),
+  caption = "Unadjusted gender wage gap by education level"
+)
+
+# --- 2-3. Unadjusted mean wage gap by Age group (Male - Female), in man-yen ---
+table_age <- data %>%
+  mutate(Wage_Yen = as.numeric(Wage_Yen),
+         Employees = as.numeric(Employees)) %>%
+  filter(!is.na(Gender), !is.na(AgeGroup), !is.na(Wage_Yen), !is.na(Employees), Employees > 0) %>%
+  group_by(AgeGroup, Gender) %>%
+  summarise(mean_wage = weighted.mean(Wage_Yen, Employees), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = Gender, values_from = mean_wage) %>%
+  mutate(Gap_man_yen = (Male - Female) / 10000)
+
+kable(
+  table_age,
+  digits = 2,
+  col.names = c("Age group", "Male wage (yen)", "Female wage (yen)", "Gap (man-yen)"),
+  caption = "Unadjusted gender wage gap by age group"
+)
+
+# --- 2-4. Unadjusted mean wage gap by Industry (Male - Female), in man-yen ---
+table_industry <- data %>%
+  mutate(Wage_Yen = as.numeric(Wage_Yen),
+         Employees = as.numeric(Employees)) %>%
+  filter(!is.na(Gender), !is.na(Industry), !is.na(Wage_Yen), !is.na(Employees), Employees > 0) %>%
+  group_by(Industry, Gender) %>%
+  summarise(mean_wage = weighted.mean(Wage_Yen, Employees), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = Gender, values_from = mean_wage) %>%
+  mutate(Gap_man_yen = (Male - Female) / 10000)
+
+kable(
+  table_industry,
+  digits = 2,
+  col.names = c("Industry", "Male wage (yen)", "Female wage (yen)", "Gap (man-yen)"),
+  caption = "Unadjusted gender wage gap by industry"
 )
 
 
