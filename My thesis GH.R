@@ -96,7 +96,7 @@ table_edu <- data %>%
   mutate(
     Gap_man_yen = (Male - Female) / 10000
   ) %>%
-  arrange(Education) %>%   # ← 指定した順で並ぶ
+  arrange(Education) %>%   
   select(Education, Male, Female, Gap_man_yen)
 
 kable(
