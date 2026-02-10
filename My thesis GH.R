@@ -79,7 +79,15 @@ cat("Unadjusted mean wage gap (Male - Female), man-yen:", gap_overall_man, "\n")
 table_edu <- data %>%
   mutate(
     Wage_Yen = as.numeric(Wage_Yen),
-    Employees = as.numeric(Employees)
+    Employees = as.numeric(Employees),
+    Gender = factor(Gender, levels = c("Male", "Female")),
+    Education = factor(Education, levels = c(
+      "JuniorHigh",
+      "HighSchool",
+      "VocationalSchool",
+      "TechnicalSchoolJuniorCollege",
+      "University"
+    ))
   ) %>%
   filter(!is.na(Gender), !is.na(Education), !is.na(Wage_Yen), !is.na(Employees), Employees > 0) %>%
   group_by(Education, Gender) %>%
@@ -87,7 +95,9 @@ table_edu <- data %>%
   tidyr::pivot_wider(names_from = Gender, values_from = mean_wage) %>%
   mutate(
     Gap_man_yen = (Male - Female) / 10000
-  )
+  ) %>%
+  arrange(Education) %>%   # ← 指定した順で並ぶ
+  select(Education, Male, Female, Gap_man_yen)
 
 kable(
   table_edu,
@@ -96,15 +106,21 @@ kable(
   caption = "Unadjusted gender wage gap by education level"
 )
 
+
 # --- 2-3. Unadjusted mean wage gap by Age group (Male - Female), in man-yen ---
 table_age <- data %>%
   mutate(Wage_Yen = as.numeric(Wage_Yen),
-         Employees = as.numeric(Employees)) %>%
+         Employees = as.numeric(Employees),
+         Gender = factor(Gender, levels = c("Male", "Female"))
+         )%>%
   filter(!is.na(Gender), !is.na(AgeGroup), !is.na(Wage_Yen), !is.na(Employees), Employees > 0) %>%
   group_by(AgeGroup, Gender) %>%
   summarise(mean_wage = weighted.mean(Wage_Yen, Employees), .groups = "drop") %>%
   tidyr::pivot_wider(names_from = Gender, values_from = mean_wage) %>%
-  mutate(Gap_man_yen = (Male - Female) / 10000)
+  mutate(
+    Gap_man_yen = (Male - Female) / 10000
+    )%>%
+  select(AgeGroup, Male, Female, Gap_man_yen)
 
 kable(
   table_age,
@@ -116,12 +132,17 @@ kable(
 # --- 2-4. Unadjusted mean wage gap by Industry (Male - Female), in man-yen ---
 table_industry <- data %>%
   mutate(Wage_Yen = as.numeric(Wage_Yen),
-         Employees = as.numeric(Employees)) %>%
+         Employees = as.numeric(Employees),
+         Gender = factor(Gender, levels = c("Male", "Female"))
+         )%>%
   filter(!is.na(Gender), !is.na(Industry), !is.na(Wage_Yen), !is.na(Employees), Employees > 0) %>%
   group_by(Industry, Gender) %>%
   summarise(mean_wage = weighted.mean(Wage_Yen, Employees), .groups = "drop") %>%
   tidyr::pivot_wider(names_from = Gender, values_from = mean_wage) %>%
-  mutate(Gap_man_yen = (Male - Female) / 10000)
+  mutate(
+    Gap_man_yen = (Male - Female) / 10000
+    )%>%
+  select(Industry, Male, Female, Gap_man_yen)
 
 kable(
   table_industry,
@@ -129,6 +150,7 @@ kable(
   col.names = c("Industry", "Male wage (yen)", "Female wage (yen)", "Gap (man-yen)"),
   caption = "Unadjusted gender wage gap by industry"
 )
+
 
 
 # ===== 3. Encoding =====
