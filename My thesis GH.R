@@ -131,6 +131,7 @@ kable(
 )
 
 
+
 # ===== 3. Encoding =====
 data <- data %>%
   mutate(
