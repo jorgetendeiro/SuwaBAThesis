@@ -16,45 +16,8 @@ data <- read_csv("Suwa_BSWS.csv", show_col_types = FALSE)
 
 
 
-# ===== 2. Mean wage by gender (bar plot) =====
-
-# Compute employee-weighted average wages by gender
-mean_wage_gender <- data %>%
-  mutate(
-    Wage_Yen = as.numeric(Wage_Yen),
-    Employees = as.numeric(Employees)
-  ) %>%
-  filter(!is.na(Gender), !is.na(Wage_Yen), !is.na(Employees), Employees > 0) %>%
-  group_by(Gender) %>%
-  summarise(
-    mean_wage = weighted.mean(Wage_Yen, Employees, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
-  mutate(Gender = factor(Gender, levels = c("Male", "Female")))
-
-# Create a bar chart
-p_gender_bar <- ggplot(mean_wage_gender, aes(x = Gender, y = mean_wage, fill = Gender)) +
-  geom_col(width = 0.65) +
-  scale_fill_manual(values = c("Male" = "#4C72B0", "Female" = "#DD8452")) +
-  labs(
-    x = "",
-    y = "Average monthly wage (yen)",
-    title = ""
-  ) +
-  theme_minimal(base_size = 16) +
-  theme(legend.position = "none")
-
-ggsave(
-  filename = "Figures/gender_mean_wage_bar.png",
-  plot = p_gender_bar,
-  width = 6.5,
-  height = 4.5,
-  units = "in",
-  dpi = 300,
-  bg = "white"
-)
-
-# --- 2-1. unadjusted mean wage gap (Male - Female), in man-yen ---
+# ===== 2. Descriptives =====
+# ===== 2.1 Unadjusted mean wage gap (Male - Female), in man-yen ===== 
 mean_wage_gender_man <- data %>%
   mutate(
     Wage_Yen = as.numeric(Wage_Yen),
@@ -74,8 +37,29 @@ gap_overall_man <- with(mean_wage_gender_man,
                         mean_wage_man[Gender == "Male"] - mean_wage_man[Gender == "Female"])
 cat("Unadjusted mean wage gap (Male - Female), man-yen:", gap_overall_man, "\n")
 
+# Create a bar chart
+p_gender_bar <- ggplot(mean_wage_gender_man, aes(x = Gender, y = mean_wage_man, fill = Gender)) +
+  geom_col(width = 0.65) +
+  scale_fill_manual(values = c("Male" = "#4C72B0", "Female" = "#DD8452")) +
+  labs(
+    x = "",
+    y = "Average monthly wage (man-yen)",
+    title = ""
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(legend.position = "none")
 
-# --- 2-2. Unadjusted mean wage gap by Education (Male - Female), in man-yen ---
+ggsave(
+  filename = "Figures/gender_mean_wage_bar.png",
+  plot = p_gender_bar,
+  width = 6.5,
+  height = 4.5,
+  units = "in",
+  dpi = 300,
+  bg = "white"
+)
+
+# ===== 2.2 Unadjusted mean wage gap by Education (Male - Female), in man-yen ===== 
 table_edu <- data %>%
   mutate(
     Wage_Yen = as.numeric(Wage_Yen),
@@ -107,7 +91,7 @@ kable(
 )
 
 
-# --- 2-3. Unadjusted mean wage gap by Age group (Male - Female), in man-yen ---
+# ===== 2.3 Unadjusted mean wage gap by Age group (Male - Female), in man-yen ===== 
 table_age <- data %>%
   mutate(Wage_Yen = as.numeric(Wage_Yen),
          Employees = as.numeric(Employees),
@@ -129,7 +113,7 @@ kable(
   caption = "Unadjusted gender wage gap by age group"
 )
 
-# --- 2-4. Unadjusted mean wage gap by Industry (Male - Female), in man-yen ---
+# ===== 2.4 Unadjusted mean wage gap by Industry (Male - Female), in man-yen ===== 
 table_industry <- data %>%
   mutate(Wage_Yen = as.numeric(Wage_Yen),
          Employees = as.numeric(Employees),
